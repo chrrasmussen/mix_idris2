@@ -19,6 +19,14 @@ defmodule Mix.Tasks.Compile.Blodwen do
 
     dest = Mix.Project.compile_path(project)
 
+    unless is_list(entrypoints) && Enum.all?(entrypoints, &entrypoint_valid?/1) do
+      Mix.raise(
+        ":blodwen_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path}, got: #{
+          inspect(entrypoints)
+        }"
+      )
+    end
+
     manifest = read_manifest(manifest_file())
 
     # Force recompile if any config files has been updated since last compile
@@ -40,6 +48,12 @@ defmodule Mix.Tasks.Compile.Blodwen do
 
     result
   end
+
+  def entrypoint_valid?({module_name, root_dir, main_path}) do
+    is_atom(module_name) && String.valid?(root_dir) && String.valid?(main_path)
+  end
+
+  def entrypoint_valid?(_), do: false
 
   @impl true
   def manifests, do: [manifest_file()]
