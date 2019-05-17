@@ -109,11 +109,13 @@ defmodule Mix.Tasks.Compile.Blodwen do
   end
 
   defp compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main) do
-    # TODO: Improve command
     dest_beam = path_to_beam(dest, erl_module)
-    compile_cmd = ~s(echo -n ':c "#{dest_beam}" main' | blodwen --cg erlang #{blodwen_main})
 
-    System.cmd("bash", ["-c", compile_cmd], cd: blodwen_root_dir)
+    System.cmd(
+      "blodwen",
+      ["--cg", "erlang", "--library", "exports", dest_beam, blodwen_main],
+      cd: blodwen_root_dir
+    )
   end
 
   defp calc_diff(previous, current) do
