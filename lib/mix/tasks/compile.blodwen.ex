@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Compile.Blodwen do
 
     unless is_list(entrypoints) && Enum.all?(entrypoints, &entrypoint_valid?/1) do
       Mix.raise(
-        ":blodwen_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path}, got: #{
+        ":blodwen_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path, blodwen_entrypoint}, got: #{
           inspect(entrypoints)
         }"
       )
@@ -49,8 +49,9 @@ defmodule Mix.Tasks.Compile.Blodwen do
     result
   end
 
-  def entrypoint_valid?({module_name, root_dir, main_path}) do
-    is_atom(module_name) && String.valid?(root_dir) && String.valid?(main_path)
+  def entrypoint_valid?({module_name, root_dir, main_path, blodwen_entrypoint}) do
+    is_atom(module_name) && String.valid?(root_dir) && String.valid?(main_path) &&
+      String.valid?(blodwen_entrypoint)
   end
 
   def entrypoint_valid?(_), do: false
@@ -96,10 +97,10 @@ defmodule Mix.Tasks.Compile.Blodwen do
         else: MapSet.union(added, changed)
 
     Enum.each(to_be_compiled, fn erl_module ->
-      {_, blodwen_root_dir, blodwen_main, _} =
+      {_, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint, _} =
         Enum.find(entrypoints, &(elem(&1, 0) == erl_module))
 
-      compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main)
+      compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint)
 
       :code.purge(erl_module)
       :code.delete(erl_module)
@@ -108,12 +109,12 @@ defmodule Mix.Tasks.Compile.Blodwen do
     {:ok, []}
   end
 
-  defp compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main) do
-    dest_beam = path_to_beam(dest, erl_module)
+  defp compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint) do
+    beam_dest = path_to_beam(dest, erl_module)
 
     System.cmd(
       "blodwen",
-      ["--cg", "erlang", "--library", "exports", dest_beam, blodwen_main],
+      ["--cg", "erlang", "--library", blodwen_entrypoint, beam_dest, blodwen_main_file],
       cd: blodwen_root_dir
     )
   end
@@ -150,7 +151,7 @@ defmodule Mix.Tasks.Compile.Blodwen do
 
     if manifest_entry && entrypoint do
       {_, manifest_files} = manifest_entry
-      {_, _, _, entrypoint_files} = entrypoint
+      {_, _, _, _, entrypoint_files} = entrypoint
 
       manifest_files != entrypoint_files
     else
@@ -166,11 +167,14 @@ defmodule Mix.Tasks.Compile.Blodwen do
     File.rm(path_to_beam(dest, erl_module))
   end
 
-  defp annotate_entrypoint({erl_module, blodwen_root_dir, blodwen_main}, exts) do
+  defp annotate_entrypoint(
+         {erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint},
+         exts
+       ) do
     files = Mix.Utils.extract_files([blodwen_root_dir], exts)
     files_with_mtime = source_files_with_mtime(files)
 
-    {erl_module, blodwen_root_dir, blodwen_main, files_with_mtime}
+    {erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint, files_with_mtime}
   end
 
   defp source_files_with_mtime(files) do
@@ -179,7 +183,7 @@ defmodule Mix.Tasks.Compile.Blodwen do
     end)
   end
 
-  defp annotated_entrypoint_to_manifest_entry({erl_module, _, _, files_with_mtime}) do
+  defp annotated_entrypoint_to_manifest_entry({erl_module, _, _, _, files_with_mtime}) do
     {erl_module, files_with_mtime}
   end
 
