@@ -10,6 +10,23 @@ defmodule Mix.Tasks.Compile.Blodwen do
     all_warnings: :boolean
   ]
 
+  defmodule AnnotatedEntrypoint do
+    @enforce_keys [
+      :erl_module,
+      :blodwen_root_dir,
+      :blodwen_main_file,
+      :blodwen_entrypoint,
+      :files_with_mtime
+    ]
+    defstruct [
+      :erl_module,
+      :blodwen_root_dir,
+      :blodwen_main_file,
+      :blodwen_entrypoint,
+      :files_with_mtime
+    ]
+  end
+
   @impl true
   def run(args) do
     {opts, _, _} = OptionParser.parse(args, switches: @switches)
@@ -73,7 +90,7 @@ defmodule Mix.Tasks.Compile.Blodwen do
     # Calculate added/changed/removed modules
 
     manifest_erl_modules = Enum.map(manifest, &elem(&1, 0))
-    entrypoints_erl_modules = Enum.map(entrypoints, &elem(&1, 0))
+    entrypoints_erl_modules = Enum.map(entrypoints, & &1.erl_module)
 
     %{added: added, existing: existing, removed: removed} =
       calc_diff(manifest_erl_modules, entrypoints_erl_modules)
@@ -97,10 +114,15 @@ defmodule Mix.Tasks.Compile.Blodwen do
         else: MapSet.union(added, changed)
 
     Enum.each(to_be_compiled, fn erl_module ->
-      {_, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint, _} =
-        Enum.find(entrypoints, &(elem(&1, 0) == erl_module))
+      entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
 
-      compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint)
+      compile_blodwen(
+        dest,
+        erl_module,
+        entrypoint.blodwen_root_dir,
+        entrypoint.blodwen_main_file,
+        entrypoint.blodwen_entrypoint
+      )
 
       :code.purge(erl_module)
       :code.delete(erl_module)
@@ -147,13 +169,12 @@ defmodule Mix.Tasks.Compile.Blodwen do
   defp erl_module_changed?(manifest_entries, entrypoints, erl_module) do
     manifest_entry = Enum.find(manifest_entries, &(elem(&1, 0) == erl_module))
 
-    entrypoint = Enum.find(entrypoints, &(elem(&1, 0) == erl_module))
+    entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
 
     if manifest_entry && entrypoint do
       {_, manifest_files} = manifest_entry
-      {_, _, _, _, entrypoint_files} = entrypoint
 
-      manifest_files != entrypoint_files
+      manifest_files != entrypoint.files_with_mtime
     else
       true
     end
@@ -174,7 +195,13 @@ defmodule Mix.Tasks.Compile.Blodwen do
     files = Mix.Utils.extract_files([blodwen_root_dir], exts)
     files_with_mtime = source_files_with_mtime(files)
 
-    {erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint, files_with_mtime}
+    %AnnotatedEntrypoint{
+      erl_module: erl_module,
+      blodwen_root_dir: blodwen_root_dir,
+      blodwen_main_file: blodwen_main_file,
+      blodwen_entrypoint: blodwen_entrypoint,
+      files_with_mtime: files_with_mtime
+    }
   end
 
   defp source_files_with_mtime(files) do
@@ -183,7 +210,10 @@ defmodule Mix.Tasks.Compile.Blodwen do
     end)
   end
 
-  defp annotated_entrypoint_to_manifest_entry({erl_module, _, _, _, files_with_mtime}) do
+  defp annotated_entrypoint_to_manifest_entry(%AnnotatedEntrypoint{
+         erl_module: erl_module,
+         files_with_mtime: files_with_mtime
+       }) do
     {erl_module, files_with_mtime}
   end
 
