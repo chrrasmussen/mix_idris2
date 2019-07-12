@@ -1,8 +1,8 @@
-defmodule Mix.Tasks.Compile.Blodwen do
+defmodule Mix.Tasks.Compile.Idris do
   use Mix.Task.Compiler
 
   @recursive true
-  @manifest "compile.blodwen"
+  @manifest "compile.idris"
   @manifest_vsn 1
 
   @switches [
@@ -13,16 +13,16 @@ defmodule Mix.Tasks.Compile.Blodwen do
   defmodule AnnotatedEntrypoint do
     @enforce_keys [
       :erl_module,
-      :blodwen_root_dir,
-      :blodwen_main_file,
-      :blodwen_entrypoint,
+      :idris_root_dir,
+      :idris_main_file,
+      :idris_entrypoint,
       :files_with_mtime
     ]
     defstruct [
       :erl_module,
-      :blodwen_root_dir,
-      :blodwen_main_file,
-      :blodwen_entrypoint,
+      :idris_root_dir,
+      :idris_main_file,
+      :idris_entrypoint,
       :files_with_mtime
     ]
   end
@@ -32,13 +32,13 @@ defmodule Mix.Tasks.Compile.Blodwen do
     {opts, _, _} = OptionParser.parse(args, switches: @switches)
 
     project = Mix.Project.config()
-    entrypoints = project[:blodwen_entrypoints] || []
+    entrypoints = project[:idris_entrypoints] || []
 
     dest = Mix.Project.compile_path(project)
 
     unless is_list(entrypoints) && Enum.all?(entrypoints, &entrypoint_valid?/1) do
       Mix.raise(
-        ":blodwen_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path, blodwen_entrypoint}, got: #{
+        ":idris_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path, idris_entrypoint}, got: #{
           inspect(entrypoints)
         }"
       )
@@ -50,9 +50,9 @@ defmodule Mix.Tasks.Compile.Blodwen do
     configs = [Mix.Project.config_mtime()]
     force = opts[:force] || Mix.Utils.stale?(configs, [manifest_file()])
 
-    annotated_entrypoints = Enum.map(entrypoints, &annotate_entrypoint(&1, [:blod]))
+    annotated_entrypoints = Enum.map(entrypoints, &annotate_entrypoint(&1, [:idr]))
 
-    opts = Keyword.merge(project[:blodwen_options] || [], opts)
+    opts = Keyword.merge(project[:idris_options] || [], opts)
     result = do_run(manifest, annotated_entrypoints, dest, force, opts)
 
     case result do
@@ -66,9 +66,9 @@ defmodule Mix.Tasks.Compile.Blodwen do
     result
   end
 
-  def entrypoint_valid?({module_name, root_dir, main_path, blodwen_entrypoint}) do
+  def entrypoint_valid?({module_name, root_dir, main_path, idris_entrypoint}) do
     is_atom(module_name) && String.valid?(root_dir) && String.valid?(main_path) &&
-      String.valid?(blodwen_entrypoint)
+      String.valid?(idris_entrypoint)
   end
 
   def entrypoint_valid?(_), do: false
@@ -116,12 +116,12 @@ defmodule Mix.Tasks.Compile.Blodwen do
     Enum.each(to_be_compiled, fn erl_module ->
       entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
 
-      compile_blodwen(
+      compile_idris(
         dest,
         erl_module,
-        entrypoint.blodwen_root_dir,
-        entrypoint.blodwen_main_file,
-        entrypoint.blodwen_entrypoint
+        entrypoint.idris_root_dir,
+        entrypoint.idris_main_file,
+        entrypoint.idris_entrypoint
       )
 
       :code.purge(erl_module)
@@ -131,13 +131,13 @@ defmodule Mix.Tasks.Compile.Blodwen do
     {:ok, []}
   end
 
-  defp compile_blodwen(dest, erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint) do
+  defp compile_idris(dest, erl_module, idris_root_dir, idris_main_file, idris_entrypoint) do
     beam_dest = path_to_beam(dest, erl_module)
 
     System.cmd(
-      "blodwen",
-      ["--cg", "erlang", "--library", blodwen_entrypoint, beam_dest, blodwen_main_file],
-      cd: blodwen_root_dir
+      "idris2",
+      ["--cg", "erlang", "--library", beam_dest, idris_entrypoint, idris_main_file],
+      cd: idris_root_dir
     )
   end
 
@@ -189,17 +189,17 @@ defmodule Mix.Tasks.Compile.Blodwen do
   end
 
   defp annotate_entrypoint(
-         {erl_module, blodwen_root_dir, blodwen_main_file, blodwen_entrypoint},
+         {erl_module, idris_root_dir, idris_main_file, idris_entrypoint},
          exts
        ) do
-    files = Mix.Utils.extract_files([blodwen_root_dir], exts)
+    files = Mix.Utils.extract_files([idris_root_dir], exts)
     files_with_mtime = source_files_with_mtime(files)
 
     %AnnotatedEntrypoint{
       erl_module: erl_module,
-      blodwen_root_dir: blodwen_root_dir,
-      blodwen_main_file: blodwen_main_file,
-      blodwen_entrypoint: blodwen_entrypoint,
+      idris_root_dir: idris_root_dir,
+      idris_main_file: idris_main_file,
+      idris_entrypoint: idris_entrypoint,
       files_with_mtime: files_with_mtime
     }
   end

@@ -1,9 +1,9 @@
-defmodule MixBlodwen.MixProject do
+defmodule MixIdris.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mix_blodwen,
+      app: :mix_idris,
       version: "0.1.0",
       elixir: "~> 1.5",
       deps: deps()
