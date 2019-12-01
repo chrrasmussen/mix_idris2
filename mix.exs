@@ -3,7 +3,7 @@ defmodule MixIdris.MixProject do
 
   def project do
     [
-      app: :mix_idris,
+      app: :mix_idris2,
       version: "0.1.0",
       elixir: "~> 1.5",
       deps: deps()
