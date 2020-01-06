@@ -74,7 +74,7 @@ defmodule Mix.Tasks.Compile.Idris do
         write_manifest(manifest_file(), new_manifest, timestamp)
     end
 
-    result
+    {:ok, []}
   end
 
   def entrypoint_valid?({module_name, root_dir, main_path, idris_entrypoint}) do
