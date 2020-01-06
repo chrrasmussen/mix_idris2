@@ -34,6 +34,7 @@ defmodule Mix.Tasks.Compile.Idris do
     project = Mix.Project.config()
     entrypoints = project[:idris_entrypoints] || []
 
+    idris_tmp_dir = Mix.Project.app_path(project) |> Path.join("idris")
     ebin_dir = Mix.Project.compile_path(project)
 
     unless is_list(entrypoints) && Enum.all?(entrypoints, &entrypoint_valid?/1) do
@@ -53,7 +54,7 @@ defmodule Mix.Tasks.Compile.Idris do
     annotated_entrypoints = Enum.map(entrypoints, &annotate_entrypoint(&1, [:idr]))
 
     opts = Keyword.merge(project[:idris_options] || [], opts)
-    result = do_run(manifest, annotated_entrypoints, ebin_dir, force, opts)
+    result = do_run(manifest, annotated_entrypoints, idris_tmp_dir, ebin_dir, force, opts)
 
     case result do
       {:ok, _} ->
@@ -86,7 +87,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
   # Helper functions
 
-  defp do_run(manifest, entrypoints, ebin_dir, force, _opts) do
+  defp do_run(manifest, entrypoints, idris_tmp_dir, ebin_dir, force, _opts) do
     # Calculate added/changed/removed modules
 
     manifest_erl_modules = Enum.map(manifest, &elem(&1, 0))
@@ -116,29 +117,53 @@ defmodule Mix.Tasks.Compile.Idris do
     Enum.each(to_be_compiled, fn erl_module ->
       entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
 
-      compile_idris(
-        ebin_dir,
-        erl_module,
-        entrypoint.idris_root_dir,
-        entrypoint.idris_main_file,
-        entrypoint.idris_entrypoint
-      )
+      compiled_erl_modules =
+        compile_idris(
+          idris_tmp_dir,
+          ebin_dir,
+          erl_module,
+          entrypoint.idris_root_dir,
+          entrypoint.idris_main_file,
+          entrypoint.idris_entrypoint
+        )
 
-      :code.purge(erl_module)
-      :code.delete(erl_module)
+      Enum.each(compiled_erl_modules, fn compiled_erl_module ->
+        :code.purge(compiled_erl_module)
+        :code.delete(compiled_erl_module)
+      end)
     end)
 
     {:ok, []}
   end
 
-  defp compile_idris(ebin_dir, erl_module, idris_root_dir, idris_main_file, idris_entrypoint) do
-    beam_file = path_to_beam(ebin_dir, erl_module)
+  defp compile_idris(
+         idris_tmp_dir,
+         ebin_dir,
+         erl_module,
+         idris_root_dir,
+         idris_main_file,
+         idris_entrypoint
+       ) do
+    erl_output_file = Path.join(idris_tmp_dir, "#{erl_module}.erl")
 
     System.cmd(
       "idris2",
-      ["--cg", "erlang", "--library", beam_file, idris_entrypoint, idris_main_file],
+      ["--cg", "erlang", "--library", erl_output_file, idris_entrypoint, idris_main_file],
       cd: idris_root_dir
     )
+
+    erl_module_names =
+      File.ls!(idris_tmp_dir)
+      |> Enum.filter(fn filename -> Path.extname(filename) == ".erl" end)
+      |> Enum.map(fn filename -> Path.basename(filename, ".erl") |> String.to_atom() end)
+
+    erl_file_paths =
+      erl_module_names
+      |> Enum.map(fn filename -> Path.join(idris_tmp_dir, "#{filename}.erl") end)
+
+    System.cmd("erlc", ["-W0", "-o", ebin_dir] ++ erl_file_paths)
+
+    erl_module_names
   end
 
   defp calc_diff(previous, current) do
@@ -180,12 +205,8 @@ defmodule Mix.Tasks.Compile.Idris do
     end
   end
 
-  defp path_to_beam(ebin_dir, erl_module) do
-    Path.join(ebin_dir, "#{erl_module}.beam")
-  end
-
   defp delete_erl_module(ebin_dir, erl_module) do
-    File.rm(path_to_beam(ebin_dir, erl_module))
+    # File.rm(path_to_beam(ebin_dir, erl_module)) -- TODO: Uncomment
   end
 
   defp annotate_entrypoint(
