@@ -10,6 +10,11 @@ defmodule Mix.Tasks.Compile.Idris do
     all_warnings: :boolean
   ]
 
+  defmodule Manifest do
+    defstruct entrypoints: [],
+              generated_erl_modules: []
+  end
+
   defmodule AnnotatedEntrypoint do
     @enforce_keys [
       :erl_module,
@@ -60,7 +65,11 @@ defmodule Mix.Tasks.Compile.Idris do
       {:ok, _} ->
         # Update manifest
         timestamp = System.os_time(:second)
-        new_manifest = Enum.map(annotated_entrypoints, &annotated_entrypoint_to_manifest_entry/1)
+
+        new_manifest = %Manifest{
+          entrypoints: Enum.map(annotated_entrypoints, &annotated_entrypoint_to_manifest_entry/1)
+        }
+
         write_manifest(manifest_file(), new_manifest, timestamp)
     end
 
@@ -90,7 +99,7 @@ defmodule Mix.Tasks.Compile.Idris do
   defp do_run(manifest, entrypoints, idris_tmp_dir, ebin_dir, force, _opts) do
     # Calculate added/changed/removed modules
 
-    manifest_erl_modules = Enum.map(manifest, &elem(&1, 0))
+    manifest_erl_modules = Enum.map(manifest.entrypoints, &elem(&1, 0))
     entrypoints_erl_modules = Enum.map(entrypoints, & &1.erl_module)
 
     %{added: added, existing: existing, removed: removed} =
@@ -98,7 +107,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
     changed =
       existing
-      |> Enum.filter(&erl_module_changed?(manifest, entrypoints, &1))
+      |> Enum.filter(&erl_module_changed?(manifest.entrypoints, entrypoints, &1))
       |> MapSet.new()
 
     # Clean up removed modules
@@ -244,16 +253,16 @@ defmodule Mix.Tasks.Compile.Idris do
       |> File.read!()
       |> :erlang.binary_to_term()
     rescue
-      _ -> []
+      _ -> %Manifest{}
     else
       {@manifest_vsn, data} when is_list(data) -> data
-      _ -> []
+      _ -> %Manifest{}
     end
   end
 
-  defp write_manifest(file, entries, timestamp) do
+  defp write_manifest(file, manifest, timestamp) do
     File.mkdir_p!(Path.dirname(file))
-    File.write!(file, :erlang.term_to_binary({@manifest_vsn, entries}))
+    File.write!(file, :erlang.term_to_binary({@manifest_vsn, manifest}))
     File.touch!(file, timestamp)
   end
 end
