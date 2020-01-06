@@ -62,12 +62,13 @@ defmodule Mix.Tasks.Compile.Idris do
     result = do_run(manifest, annotated_entrypoints, idris_tmp_dir, ebin_dir, force, opts)
 
     case result do
-      {:ok, _} ->
+      {:ok, generated_erl_modules} ->
         # Update manifest
         timestamp = System.os_time(:second)
 
         new_manifest = %Manifest{
-          entrypoints: Enum.map(annotated_entrypoints, &annotated_entrypoint_to_manifest_entry/1)
+          entrypoints: Enum.map(annotated_entrypoints, &annotated_entrypoint_to_manifest_entry/1),
+          generated_erl_modules: generated_files_with_hash(idris_tmp_dir, generated_erl_modules)
         }
 
         write_manifest(manifest_file(), new_manifest, timestamp)
@@ -123,37 +124,42 @@ defmodule Mix.Tasks.Compile.Idris do
         do: entrypoints_erl_modules,
         else: MapSet.union(added, changed)
 
-    Enum.each(to_be_compiled, fn erl_module ->
-      entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
+    generated_erl_modules =
+      Enum.flat_map(to_be_compiled, fn erl_module ->
+        entrypoint = Enum.find(entrypoints, &(&1.erl_module == erl_module))
 
-      compiled_erl_modules =
-        compile_idris(
-          idris_tmp_dir,
-          ebin_dir,
-          erl_module,
-          entrypoint.idris_root_dir,
-          entrypoint.idris_main_file,
-          entrypoint.idris_entrypoint
-        )
+        compiled_erl_modules =
+          compile_idris(
+            idris_tmp_dir,
+            ebin_dir,
+            manifest,
+            erl_module,
+            entrypoint.idris_root_dir,
+            entrypoint.idris_main_file,
+            entrypoint.idris_entrypoint
+          )
 
-      Enum.each(compiled_erl_modules, fn compiled_erl_module ->
-        :code.purge(compiled_erl_module)
-        :code.delete(compiled_erl_module)
+        Enum.each(compiled_erl_modules, fn compiled_erl_module ->
+          :code.purge(compiled_erl_module)
+          :code.delete(compiled_erl_module)
+        end)
+
+        compiled_erl_modules
       end)
-    end)
 
-    {:ok, []}
+    {:ok, generated_erl_modules}
   end
 
   defp compile_idris(
          idris_tmp_dir,
          ebin_dir,
+         manifest,
          erl_module,
          idris_root_dir,
          idris_main_file,
          idris_entrypoint
        ) do
-    erl_output_file = Path.join(idris_tmp_dir, "#{erl_module}.erl")
+    erl_output_file = path_to_generated_erl_module(idris_tmp_dir, erl_module)
 
     System.cmd(
       "idris2",
@@ -161,18 +167,28 @@ defmodule Mix.Tasks.Compile.Idris do
       cd: idris_root_dir
     )
 
-    erl_module_names =
+    all_generated_erl_modules =
       File.ls!(idris_tmp_dir)
       |> Enum.filter(fn filename -> Path.extname(filename) == ".erl" end)
       |> Enum.map(fn filename -> Path.basename(filename, ".erl") |> String.to_atom() end)
 
+    erl_modules_hashes =
+      generated_files_with_hash(idris_tmp_dir, all_generated_erl_modules)
+      |> Enum.filter(fn {erl_module, new_hash} ->
+        case Keyword.fetch(manifest.generated_erl_modules, erl_module) do
+          {:ok, old_hash} -> old_hash != new_hash
+          :error -> true
+        end
+      end)
+
     erl_file_paths =
-      erl_module_names
-      |> Enum.map(fn filename -> Path.join(idris_tmp_dir, "#{filename}.erl") end)
+      erl_modules_hashes
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.map(fn filename -> path_to_generated_erl_module(idris_tmp_dir, filename) end)
 
     System.cmd("erlc", ["-W0", "-o", ebin_dir] ++ erl_file_paths)
 
-    erl_module_names
+    all_generated_erl_modules
   end
 
   defp calc_diff(previous, current) do
@@ -240,6 +256,17 @@ defmodule Mix.Tasks.Compile.Idris do
     end)
   end
 
+  defp generated_files_with_hash(idris_tmp_dir, erl_modules) do
+    Enum.map(erl_modules, fn erl_module ->
+      path = path_to_generated_erl_module(idris_tmp_dir, erl_module)
+      {erl_module, hash_file(path)}
+    end)
+  end
+
+  defp path_to_generated_erl_module(idris_tmp_dir, erl_module) do
+    Path.join(idris_tmp_dir, "#{erl_module}.erl")
+  end
+
   defp annotated_entrypoint_to_manifest_entry(%AnnotatedEntrypoint{
          erl_module: erl_module,
          files_with_mtime: files_with_mtime
@@ -255,7 +282,7 @@ defmodule Mix.Tasks.Compile.Idris do
     rescue
       _ -> %Manifest{}
     else
-      {@manifest_vsn, data} when is_list(data) -> data
+      {@manifest_vsn, data} -> data
       _ -> %Manifest{}
     end
   end
@@ -264,5 +291,15 @@ defmodule Mix.Tasks.Compile.Idris do
     File.mkdir_p!(Path.dirname(file))
     File.write!(file, :erlang.term_to_binary({@manifest_vsn, manifest}))
     File.touch!(file, timestamp)
+  end
+
+  defp hash_file(path, algorithm \\ :sha256) do
+    path
+    |> File.stream!([], 16_384)
+    |> Enum.reduce(:crypto.hash_init(algorithm), fn chunk, digest ->
+      :crypto.hash_update(digest, chunk)
+    end)
+    |> :crypto.hash_final()
+    |> Base.encode16()
   end
 end
