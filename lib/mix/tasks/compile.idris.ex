@@ -167,7 +167,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
     System.cmd(
       "idris2",
-      ["--cg", "erlang", "--library", erl_output_file, idris_entrypoint, idris_main_file],
+      ["--cg", "erlang", "--cg-opt", "--library #{idris_entrypoint}", "-o", erl_output_file, idris_main_file],
       cd: idris_root_dir
     )
 
