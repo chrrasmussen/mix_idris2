@@ -44,8 +44,8 @@ defmodule Mix.Tasks.Compile.Idris do
     end
     annotated_entrypoint = annotate_entrypoint(entrypoint, [:idr])
 
-    idris_tmp_dir = Mix.Project.app_path(project) |> Path.join("idris")
-    ebin_dir = Mix.Project.compile_path(project)
+    idris_tmp_dir = Mix.Project.app_path() |> Path.join("idris")
+    ebin_dir = Mix.Project.compile_path()
 
     manifest = read_manifest(manifest_file())
 
