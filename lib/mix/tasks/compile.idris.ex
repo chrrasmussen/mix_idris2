@@ -20,14 +20,12 @@ defmodule Mix.Tasks.Compile.Idris do
       :erl_module,
       :idris_root_dir,
       :idris_main_file,
-      :idris_entrypoint,
       :files_with_mtime
     ]
     defstruct [
       :erl_module,
       :idris_root_dir,
       :idris_main_file,
-      :idris_entrypoint,
       :files_with_mtime
     ]
   end
@@ -41,7 +39,7 @@ defmodule Mix.Tasks.Compile.Idris do
     entrypoint = project[:idris_entrypoint]
     unless entrypoint_valid?(entrypoint) do
       Mix.raise(
-        ":idris_entrypoint should be a tuple with values {:module_name, root_dir, main_path, idris_entrypoint}, got: #{
+        ":idris_entrypoint should be a tuple with values {:erl_module, idris_root_dir, idris_main_file}, got: #{
           inspect(entrypoint)
         }"
       )
@@ -77,9 +75,8 @@ defmodule Mix.Tasks.Compile.Idris do
     {:ok, []}
   end
 
-  def entrypoint_valid?({module_name, root_dir, main_path, idris_entrypoint}) do
-    is_atom(module_name) && String.valid?(root_dir) && String.valid?(main_path) &&
-      String.valid?(idris_entrypoint)
+  def entrypoint_valid?({erl_module, idris_root_dir, idris_main_file}) do
+    is_atom(erl_module) && String.valid?(idris_root_dir) && String.valid?(idris_main_file)
   end
 
   def entrypoint_valid?(_), do: false
@@ -136,8 +133,7 @@ defmodule Mix.Tasks.Compile.Idris do
             already_compiled_erl_modules,
             erl_module,
             entrypoint.idris_root_dir,
-            entrypoint.idris_main_file,
-            entrypoint.idris_entrypoint
+            entrypoint.idris_main_file
           )
 
         Enum.each(compiled_erl_modules, fn {compiled_erl_module, _} ->
@@ -158,8 +154,7 @@ defmodule Mix.Tasks.Compile.Idris do
          already_compiled_erl_modules,
          erl_module,
          idris_root_dir,
-         idris_main_file,
-         idris_entrypoint
+         idris_main_file
        ) do
     File.mkdir_p!(idris_tmp_dir)
 
@@ -244,7 +239,7 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp annotate_entrypoint(
-         {erl_module, idris_root_dir, idris_main_file, idris_entrypoint},
+         {erl_module, idris_root_dir, idris_main_file},
          exts
        ) do
     files = Mix.Utils.extract_files([idris_root_dir], exts)
@@ -254,7 +249,6 @@ defmodule Mix.Tasks.Compile.Idris do
       erl_module: erl_module,
       idris_root_dir: idris_root_dir,
       idris_main_file: idris_main_file,
-      idris_entrypoint: idris_entrypoint,
       files_with_mtime: files_with_mtime
     }
   end
