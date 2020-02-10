@@ -37,18 +37,18 @@ defmodule Mix.Tasks.Compile.Idris do
     {opts, _, _} = OptionParser.parse(args, switches: @switches)
 
     project = Mix.Project.config()
-    entrypoints = project[:idris_entrypoints] || []
 
-    idris_tmp_dir = Mix.Project.app_path(project) |> Path.join("idris")
-    ebin_dir = Mix.Project.compile_path(project)
-
-    unless is_list(entrypoints) && Enum.all?(entrypoints, &entrypoint_valid?/1) do
+    entrypoint = project[:idris_entrypoint]
+    unless entrypoint_valid?(entrypoint) do
       Mix.raise(
-        ":idris_entrypoints should be a list of entrypoints {:module_name, root_dir, main_path, idris_entrypoint}, got: #{
-          inspect(entrypoints)
+        ":idris_entrypoint should be a tuple with values {:module_name, root_dir, main_path, idris_entrypoint}, got: #{
+          inspect(entrypoint)
         }"
       )
     end
+
+    idris_tmp_dir = Mix.Project.app_path(project) |> Path.join("idris")
+    ebin_dir = Mix.Project.compile_path(project)
 
     manifest = read_manifest(manifest_file())
 
@@ -56,10 +56,10 @@ defmodule Mix.Tasks.Compile.Idris do
     configs = [Mix.Project.config_mtime()]
     force = opts[:force] || Mix.Utils.stale?(configs, [manifest_file()])
 
-    annotated_entrypoints = Enum.map(entrypoints, &annotate_entrypoint(&1, [:idr]))
+    annotated_entrypoint = annotate_entrypoint(entrypoint, [:idr])
 
     opts = Keyword.merge(project[:idris_options] || [], opts)
-    result = do_run(manifest, annotated_entrypoints, idris_tmp_dir, ebin_dir, force, opts)
+    result = do_run(manifest, [annotated_entrypoint], idris_tmp_dir, ebin_dir, force, opts)
 
     case result do
       {:ok, generated_erl_modules} ->
@@ -67,7 +67,7 @@ defmodule Mix.Tasks.Compile.Idris do
         timestamp = System.os_time(:second)
 
         new_manifest = %Manifest{
-          entrypoints: Enum.map(annotated_entrypoints, &annotated_entrypoint_to_manifest_entry/1),
+          entrypoints: [annotated_entrypoint_to_manifest_entry(annotated_entrypoint)],
           generated_erl_modules: generated_erl_modules
         }
 
