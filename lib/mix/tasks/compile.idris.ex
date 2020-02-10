@@ -53,8 +53,9 @@ defmodule Mix.Tasks.Compile.Idris do
     configs = [Mix.Project.config_mtime()]
     force = opts[:force] || Mix.Utils.stale?(configs, [manifest_file()])
 
+    app_name = project[:app] || ""
     opts = Keyword.merge(project[:idris_options] || [], opts)
-    result = do_run(manifest, annotated_entrypoint, idris_tmp_dir, ebin_dir, force, opts)
+    result = do_run(app_name, manifest, annotated_entrypoint, idris_tmp_dir, ebin_dir, force, opts)
 
     case result do
       {:ok, compiled_erl_modules} ->
@@ -86,10 +87,21 @@ defmodule Mix.Tasks.Compile.Idris do
 
   # Helper functions
 
-  defp do_run(manifest, entrypoint, idris_tmp_dir, ebin_dir, force, _opts) do
-    has_idris_modules_changed = manifest.idris_modules != entrypoint.files_with_mtime || force
+  defp do_run(app_name, manifest, entrypoint, idris_tmp_dir, ebin_dir, force, _opts) do
+    has_idris_modules_changed = manifest.idris_modules != entrypoint.files_with_mtime
 
-    if has_idris_modules_changed do
+    if has_idris_modules_changed || force do
+      IO.puts "==> #{app_name}"
+
+      if force do
+        idris_modules_count = map_size(entrypoint.files_with_mtime)
+        IO.puts "Force recompile of all Idris modules (#{idris_modules_count})"
+      else
+        changed_files_count = MapSet.difference(MapSet.new(entrypoint.files_with_mtime), MapSet.new(manifest.idris_modules))
+          |> MapSet.size()
+        IO.puts "Detected changes in #{changed_files_count} file#{plural_s(changed_files_count)} (.idr)"
+      end
+
       newly_compiled_erl_modules =
         compile_idris(
           idris_tmp_dir,
@@ -106,7 +118,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
       {:ok, Map.merge(manifest.compiled_erl_modules, newly_compiled_erl_modules)}
     else
-      {:ok , manifest.compiled_erl_modules}
+      {:ok, manifest.compiled_erl_modules}
     end
   end
 
@@ -119,7 +131,7 @@ defmodule Mix.Tasks.Compile.Idris do
        ) do
     File.mkdir_p!(idris_tmp_dir)
 
-    System.cmd(
+    {idris2_output, _idris2_exit_status} = System.cmd(
       "idris2",
       [
         "--cg",
@@ -132,6 +144,11 @@ defmodule Mix.Tasks.Compile.Idris do
       ],
       cd: idris_root_dir
     )
+
+    idris2_trimmed_output = String.trim(idris2_output)
+    if idris2_trimmed_output != "" do
+      IO.puts idris2_trimmed_output
+    end
 
     all_generated_erl_modules =
       File.ls!(idris_tmp_dir)
@@ -152,9 +169,21 @@ defmodule Mix.Tasks.Compile.Idris do
       generated_erl_modules_hashes
       |> Enum.map(fn {filename, _} -> path_to_generated_erl_module(idris_tmp_dir, filename) end)
 
-    System.cmd("erlc", ["-W0", "-o", ebin_dir] ++ erl_file_paths)
+    changed_files_count = length(erl_file_paths)
+    IO.puts "Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.erl)"
+
+    {erlc_output, _erlc_exit_status} = System.cmd("erlc", ["-W0", "-o", ebin_dir] ++ erl_file_paths)
+
+    erlc_trimmed_output = String.trim(erlc_output)
+    if erlc_trimmed_output != "" do
+      IO.puts erlc_trimmed_output
+    end
 
     generated_erl_modules_hashes
+  end
+
+  defp plural_s(count) do
+    if count != 1, do: "s", else: ""
   end
 
   defp do_clean(manifest_file, ebin_dir) do
