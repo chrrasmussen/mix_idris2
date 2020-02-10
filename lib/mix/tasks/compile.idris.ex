@@ -161,13 +161,19 @@ defmodule Mix.Tasks.Compile.Idris do
          idris_main_file,
          idris_entrypoint
        ) do
-    erl_output_file = path_to_generated_erl_module(idris_tmp_dir, erl_module)
-
     File.mkdir_p!(idris_tmp_dir)
 
     System.cmd(
       "idris2",
-      ["--cg", "erlang", "--cg-opt", "--library #{idris_entrypoint}", "-o", erl_output_file, idris_main_file],
+      [
+        "--cg",
+        "erlang",
+        "--cg-opt",
+        "--library --format erlang",
+        "-o",
+        idris_tmp_dir,
+        idris_main_file
+      ],
       cd: idris_root_dir
     )
 
