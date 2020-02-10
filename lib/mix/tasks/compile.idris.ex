@@ -112,6 +112,11 @@ defmodule Mix.Tasks.Compile.Idris do
         )
       end
 
+      # Re-create output folder on every build
+      # Makes it easier to track newly generated files
+      File.rm_rf!(idris_tmp_dir)
+      File.mkdir_p!(idris_tmp_dir)
+
       newly_compiled_erl_modules =
         compile_idris(
           idris_tmp_dir,
@@ -139,8 +144,6 @@ defmodule Mix.Tasks.Compile.Idris do
          idris_root_dir,
          idris_main_file
        ) do
-    File.mkdir_p!(idris_tmp_dir)
-
     {idris2_output, _idris2_exit_status} =
       System.cmd(
         "idris2",
@@ -180,6 +183,9 @@ defmodule Mix.Tasks.Compile.Idris do
     erl_file_paths =
       generated_erl_modules_hashes
       |> Enum.map(fn {filename, _} -> path_to_generated_erl_module(idris_tmp_dir, filename) end)
+
+    generated_files_count = length(all_generated_erl_modules)
+    IO.puts("Generated #{generated_files_count} file#{plural_s(generated_files_count)} (.erl)")
 
     changed_files_count = length(erl_file_paths)
     IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.erl)")
