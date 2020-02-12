@@ -7,6 +7,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
   @switches [
     force: :boolean,
+    debug: :boolean,
     all_warnings: :boolean
   ]
 
@@ -90,7 +91,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
   # Helper functions
 
-  defp do_run(app_name, manifest, entrypoint, idris_tmp_dir, ebin_dir, force, _opts) do
+  defp do_run(app_name, manifest, entrypoint, idris_tmp_dir, ebin_dir, force, opts) do
     has_idris_modules_changed = manifest.idris_modules != entrypoint.files_with_mtime
 
     if has_idris_modules_changed || force do
@@ -123,7 +124,8 @@ defmodule Mix.Tasks.Compile.Idris do
           ebin_dir,
           manifest.compiled_erl_modules,
           entrypoint.idris_root_dir,
-          entrypoint.idris_main_file
+          entrypoint.idris_main_file,
+          opts
         )
 
       Enum.each(newly_compiled_erl_modules, fn {erl_module, _} ->
@@ -142,20 +144,25 @@ defmodule Mix.Tasks.Compile.Idris do
          ebin_dir,
          already_compiled_erl_modules,
          idris_root_dir,
-         idris_main_file
+         idris_main_file,
+         opts
        ) do
+    idris2_args = [
+      "--cg",
+      "erlang",
+      "--cg-opt",
+      "--library --format erlang",
+      "-o",
+      idris_tmp_dir,
+      idris_main_file
+    ]
+
+    debug_log("Running cmd: idris2 " <> show_args(idris2_args), opts[:debug])
+
     {idris2_output, _idris2_exit_status} =
       System.cmd(
         "idris2",
-        [
-          "--cg",
-          "erlang",
-          "--cg-opt",
-          "--library --format erlang",
-          "-o",
-          idris_tmp_dir,
-          idris_main_file
-        ],
+        idris2_args,
         cd: idris_root_dir
       )
 
@@ -190,8 +197,10 @@ defmodule Mix.Tasks.Compile.Idris do
     changed_files_count = length(erl_file_paths)
     IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.erl)")
 
-    {erlc_output, _erlc_exit_status} =
-      System.cmd("erlc", ["-W0", "-o", ebin_dir] ++ erl_file_paths)
+    erlc_args = ["-W0", "-o", ebin_dir] ++ erl_file_paths
+    debug_log("Running cmd: erlc " <> show_args(erlc_args), opts[:debug])
+
+    {erlc_output, _erlc_exit_status} = System.cmd("erlc", erlc_args)
 
     erlc_trimmed_output = String.trim(erlc_output)
 
@@ -291,5 +300,17 @@ defmodule Mix.Tasks.Compile.Idris do
     end)
     |> :crypto.hash_final()
     |> Base.encode16()
+  end
+
+  defp show_args(args) do
+    args
+    |> Enum.map(&"\"#{&1}\"")
+    |> Enum.join(" ")
+  end
+
+  defp debug_log(msg, debug) do
+    if debug do
+      IO.puts("[debug] #{msg}")
+    end
   end
 end
