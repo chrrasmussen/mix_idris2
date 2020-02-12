@@ -160,10 +160,16 @@ defmodule Mix.Tasks.Compile.Idris do
     debug_log("Running cmd: idris2 " <> show_args(idris2_args), opts[:debug])
 
     {idris2_output, _idris2_exit_status} =
-      System.cmd(
-        "idris2",
-        idris2_args,
-        cd: idris_root_dir
+      debug_measure(
+        fn ->
+          System.cmd(
+            "idris2",
+            idris2_args,
+            cd: idris_root_dir
+          )
+        end,
+        "idris2 cmd",
+        opts[:debug]
       )
 
     idris2_trimmed_output = String.trim(idris2_output)
@@ -200,7 +206,14 @@ defmodule Mix.Tasks.Compile.Idris do
     erlc_args = ["-W0", "-o", ebin_dir] ++ erl_file_paths
     debug_log("Running cmd: erlc " <> show_args(erlc_args), opts[:debug])
 
-    {erlc_output, _erlc_exit_status} = System.cmd("erlc", erlc_args)
+    {erlc_output, _erlc_exit_status} =
+      debug_measure(
+        fn ->
+          System.cmd("erlc", erlc_args)
+        end,
+        "erlc cmd",
+        opts[:debug]
+      )
 
     erlc_trimmed_output = String.trim(erlc_output)
 
@@ -311,6 +324,17 @@ defmodule Mix.Tasks.Compile.Idris do
   defp debug_log(msg, debug) do
     if debug do
       IO.puts("[debug] #{msg}")
+    end
+  end
+
+  defp debug_measure(action, msg, debug) do
+    if debug do
+      {time, value} = :timer.tc(action)
+      formatted_time = :io_lib.format('~.3f', [time / 1_000_000])
+      IO.puts("[timing] #{msg}: #{formatted_time}s")
+      value
+    else
+      action.()
     end
   end
 end
