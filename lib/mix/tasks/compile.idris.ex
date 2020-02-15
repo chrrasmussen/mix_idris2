@@ -11,6 +11,8 @@ defmodule Mix.Tasks.Compile.Idris do
     all_warnings: :boolean
   ]
 
+  @idris_extension :idr
+
   defmodule Manifest do
     defstruct idris_modules: %{},
               compiled_erl_modules: %{}
@@ -45,7 +47,7 @@ defmodule Mix.Tasks.Compile.Idris do
       )
     end
 
-    annotated_entrypoint = annotate_entrypoint(entrypoint, [:idr])
+    annotated_entrypoint = annotate_entrypoint(entrypoint, [@idris_extension])
 
     idris_tmp_dir = Mix.Project.app_path() |> Path.join("idris")
     ebin_dir = Mix.Project.compile_path()
@@ -92,24 +94,26 @@ defmodule Mix.Tasks.Compile.Idris do
   # Helper functions
 
   defp do_run(app_name, manifest, entrypoint, idris_tmp_dir, ebin_dir, force, opts) do
-    has_idris_modules_changed = manifest.idris_modules != entrypoint.files_with_mtime
+    changed_idris_modules =
+      MapSet.difference(
+        MapSet.new(entrypoint.files_with_mtime),
+        MapSet.new(manifest.idris_modules)
+      )
+      |> Enum.into(%{})
 
-    if has_idris_modules_changed || force do
+    changed_idris_modules_count = map_size(changed_idris_modules)
+
+    if changed_idris_modules_count > 0 || force do
       IO.puts("==> #{app_name}")
 
       if force do
         idris_modules_count = map_size(entrypoint.files_with_mtime)
         IO.puts("Force recompile of all Idris modules (#{idris_modules_count})")
       else
-        changed_files_count =
-          MapSet.difference(
-            MapSet.new(entrypoint.files_with_mtime),
-            MapSet.new(manifest.idris_modules)
-          )
-          |> MapSet.size()
-
         IO.puts(
-          "Detected changes in #{changed_files_count} file#{plural_s(changed_files_count)} (.idr)"
+          "Detected changes in #{changed_idris_modules_count} file#{
+            plural_s(changed_idris_modules_count)
+          } (.idr)"
         )
       end
 
@@ -120,11 +124,13 @@ defmodule Mix.Tasks.Compile.Idris do
 
       newly_compiled_erl_modules =
         compile_idris(
+          changed_idris_modules,
+          manifest.compiled_erl_modules,
           idris_tmp_dir,
           ebin_dir,
-          manifest.compiled_erl_modules,
           entrypoint.idris_root_dir,
           entrypoint.idris_main_file,
+          force,
           opts
         )
 
@@ -140,18 +146,40 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp compile_idris(
+         changed_idris_modules,
+         already_compiled_erl_modules,
          idris_tmp_dir,
          ebin_dir,
-         already_compiled_erl_modules,
          idris_root_dir,
          idris_main_file,
+         force,
          opts
        ) do
+    # The force flag is enabled on initial compilation => Generate all modules
+    # Otherwise: Generate only modules that have changed
+    extra_cg_opts =
+      if force do
+        ""
+      else
+        namespaces =
+          changed_idris_modules
+          |> Enum.map(fn {path, _} ->
+            path
+            |> String.replace_prefix(idris_root_dir, "")
+            |> String.replace_suffix(".#{@idris_extension}", "")
+            |> String.trim_leading("/")
+            |> String.replace("/", ".")
+          end)
+          |> Enum.join(",")
+
+        " --changed #{namespaces}"
+      end
+
     idris2_args = [
       "--cg",
       "erlang",
       "--cg-opt",
-      "--library --format erlang",
+      "--library --format erlang" <> extra_cg_opts,
       "-o",
       idris_tmp_dir,
       idris_main_file
