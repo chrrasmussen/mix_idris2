@@ -75,9 +75,12 @@ defmodule Mix.Tasks.Compile.Idris do
         }
 
         write_manifest(manifest_file(), new_manifest, timestamp)
-    end
 
-    {:ok, []}
+        {:ok, []}
+
+      :error ->
+        {:error, []}
+    end
   end
 
   @impl true
@@ -122,7 +125,7 @@ defmodule Mix.Tasks.Compile.Idris do
       File.rm_rf!(idris_tmp_dir)
       File.mkdir_p!(idris_tmp_dir)
 
-      newly_compiled_erl_modules =
+      compile_result =
         compile_idris(
           changed_idris_modules,
           manifest.compiled_erl_modules,
@@ -134,12 +137,18 @@ defmodule Mix.Tasks.Compile.Idris do
           opts
         )
 
-      Enum.each(newly_compiled_erl_modules, fn {erl_module, _} ->
-        :code.purge(erl_module)
-        :code.delete(erl_module)
-      end)
+      case compile_result do
+        {:ok, newly_compiled_erl_modules} ->
+          Enum.each(newly_compiled_erl_modules, fn {erl_module, _} ->
+            :code.purge(erl_module)
+            :code.delete(erl_module)
+          end)
 
-      {:ok, Map.merge(manifest.compiled_erl_modules, newly_compiled_erl_modules)}
+          {:ok, Map.merge(manifest.compiled_erl_modules, newly_compiled_erl_modules)}
+
+        :error ->
+          :error
+      end
     else
       {:ok, manifest.compiled_erl_modules}
     end
@@ -150,6 +159,32 @@ defmodule Mix.Tasks.Compile.Idris do
          already_compiled_erl_modules,
          idris_tmp_dir,
          ebin_dir,
+         idris_root_dir,
+         idris_main_file,
+         force,
+         opts
+       ) do
+    with :ok <-
+           generate_idris_modules(
+             changed_idris_modules,
+             idris_tmp_dir,
+             idris_root_dir,
+             idris_main_file,
+             force,
+             opts
+           ),
+         {:ok, generated_erl_modules_hashes} <-
+           compile_erl_modules(already_compiled_erl_modules, idris_tmp_dir, ebin_dir, opts) do
+      {:ok, generated_erl_modules_hashes}
+    else
+      _ ->
+        :error
+    end
+  end
+
+  defp generate_idris_modules(
+         changed_idris_modules,
+         idris_tmp_dir,
          idris_root_dir,
          idris_main_file,
          force,
@@ -187,7 +222,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
     debug_log("Running cmd: idris2 " <> show_args(idris2_args), opts[:debug])
 
-    {idris2_output, _idris2_exit_status} =
+    {idris2_output, idris2_exit_status} =
       debug_measure(
         fn ->
           System.cmd(
@@ -206,6 +241,19 @@ defmodule Mix.Tasks.Compile.Idris do
       IO.puts(idris2_trimmed_output)
     end
 
+    if idris2_exit_status == 0 do
+      :ok
+    else
+      :error
+    end
+  end
+
+  defp compile_erl_modules(
+         already_compiled_erl_modules,
+         idris_tmp_dir,
+         ebin_dir,
+         opts
+       ) do
     all_generated_erl_modules =
       File.ls!(idris_tmp_dir)
       |> Enum.filter(fn filename -> Path.extname(filename) == ".erl" end)
@@ -234,7 +282,7 @@ defmodule Mix.Tasks.Compile.Idris do
     erlc_args = ["-W0", "-o", ebin_dir] ++ erl_file_paths
     debug_log("Running cmd: erlc " <> show_args(erlc_args), opts[:debug])
 
-    {erlc_output, _erlc_exit_status} =
+    {erlc_output, erlc_exit_status} =
       debug_measure(
         fn ->
           System.cmd("erlc", erlc_args)
@@ -249,7 +297,11 @@ defmodule Mix.Tasks.Compile.Idris do
       IO.puts(erlc_trimmed_output)
     end
 
-    generated_erl_modules_hashes
+    if erlc_exit_status == 0 do
+      {:ok, generated_erl_modules_hashes}
+    else
+      :error
+    end
   end
 
   defp plural_s(count) do
