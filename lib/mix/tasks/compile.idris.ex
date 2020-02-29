@@ -214,7 +214,7 @@ defmodule Mix.Tasks.Compile.Idris do
       "--cg",
       "erlang",
       "--cg-opt",
-      "--library --format erlang" <> extra_cg_opts,
+      "--format erlang --prefix Elixir.Idris --library" <> extra_cg_opts,
       "-o",
       idris_tmp_dir,
       idris_main_file
