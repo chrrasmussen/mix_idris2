@@ -194,7 +194,7 @@ defmodule Mix.Tasks.Compile.Idris do
     # Otherwise: Generate only modules that have changed
     extra_cg_opts =
       if force do
-        ""
+        []
       else
         namespaces =
           changed_idris_modules
@@ -207,14 +207,14 @@ defmodule Mix.Tasks.Compile.Idris do
           end)
           |> Enum.join(",")
 
-        " --changed #{namespaces}"
+        ["--changed #{namespaces}"]
       end
 
     idris2_args = [
       "--cg",
       "erlang",
       "--cg-opt",
-      "--format erlang --prefix Elixir.Idris --library" <> extra_cg_opts,
+      Enum.join(["--format erlang --prefix Elixir.Idris --library"] ++ extra_cg_opts, " "),
       "-o",
       idris_tmp_dir,
       idris_main_file
