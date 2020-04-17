@@ -279,43 +279,26 @@ defmodule Mix.Tasks.Compile.Idris do
     changed_files_count = length(erl_file_paths)
     IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.abstr)")
 
-    code = abstr_to_beam(ebin_dir, erl_file_paths)
-    erlc_args = ["-noshell", "-boot", "no_dot_erlang", "-eval", code]
-    debug_log("Running cmd: erl " <> show_args(erlc_args), opts[:debug])
+    debug_log("Compiling files: #{inspect(erl_file_paths)}", opts[:debug])
 
-    {erlc_output, erlc_exit_status} =
-      debug_measure(
-        fn ->
-          System.cmd("erl", erlc_args)
-        end,
-        "erl cmd",
-        opts[:debug]
-      )
+    # TODO: Improve error handling
+    debug_measure(
+      fn ->
+        erl_file_paths
+        |> Enum.map(&abstr_to_beam(&1, ebin_dir))
+      end,
+      ":compile.noenv_forms/2",
+      opts[:debug]
+    )
 
-    erlc_trimmed_output = String.trim(erlc_output)
-
-    if erlc_trimmed_output != "" do
-      IO.puts(erlc_trimmed_output)
-    end
-
-    if erlc_exit_status == 0 do
-      {:ok, generated_erl_modules_hashes}
-    else
-      :error
-    end
+    {:ok, generated_erl_modules_hashes}
   end
 
-  def abstr_to_beam(output_dir, src_files) do
-    """
-    CompileAbstr = fun(File, OutputDir) ->
-      {ok, Forms} = file:consult(File),
-      {ok, ModuleName, BinaryOrCode} = compile:noenv_forms(Forms, []),
-      OutputFile = filename:join(OutputDir, atom_to_list(ModuleName) ++ ".beam"),
-      file:write_file(OutputFile, BinaryOrCode)
-    end,
-    lists:map(fun(File) -> CompileAbstr(File, "#{output_dir}") end, #{inspect(src_files)}),
-    halt(0)
-    """
+  defp abstr_to_beam(erl_file_path, output_dir) do
+    {:ok, forms} = :file.consult(erl_file_path)
+    {:ok, module_name, binary_or_code} = :compile.noenv_forms(forms, [])
+    beam_path = Path.join(output_dir, "#{module_name}.beam")
+    File.write!(beam_path, binary_or_code)
   end
 
   defp plural_s(count) do
