@@ -214,7 +214,7 @@ defmodule Mix.Tasks.Compile.Idris do
       "--cg",
       "erlang",
       "--cg-opt",
-      Enum.join(["--format erlang --prefix Elixir.Idris --library"] ++ extra_cg_opts, " "),
+      Enum.join(["--format abstr --prefix Elixir.Idris --library"] ++ extra_cg_opts, " "),
       "-o",
       idris_tmp_dir,
       idris_main_file
@@ -256,8 +256,8 @@ defmodule Mix.Tasks.Compile.Idris do
        ) do
     all_generated_erl_modules =
       File.ls!(idris_tmp_dir)
-      |> Enum.filter(fn filename -> Path.extname(filename) == ".erl" end)
-      |> Enum.map(fn filename -> Path.basename(filename, ".erl") |> String.to_atom() end)
+      |> Enum.filter(fn filename -> Path.extname(filename) == ".abstr" end)
+      |> Enum.map(fn filename -> Path.basename(filename, ".abstr") |> String.to_atom() end)
 
     generated_erl_modules_hashes =
       generated_erl_modules_with_hash(idris_tmp_dir, all_generated_erl_modules)
@@ -274,20 +274,21 @@ defmodule Mix.Tasks.Compile.Idris do
       |> Enum.map(fn {filename, _} -> path_to_generated_erl_module(idris_tmp_dir, filename) end)
 
     generated_files_count = length(all_generated_erl_modules)
-    IO.puts("Generated #{generated_files_count} file#{plural_s(generated_files_count)} (.erl)")
+    IO.puts("Generated #{generated_files_count} file#{plural_s(generated_files_count)} (.abstr)")
 
     changed_files_count = length(erl_file_paths)
-    IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.erl)")
+    IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.abstr)")
 
-    erlc_args = ["-W0", "-o", ebin_dir] ++ erl_file_paths
-    debug_log("Running cmd: erlc " <> show_args(erlc_args), opts[:debug])
+    code = abstr_to_beam(ebin_dir, erl_file_paths)
+    erlc_args = ["-noshell", "-boot", "no_dot_erlang", "-eval", code]
+    debug_log("Running cmd: erl " <> show_args(erlc_args), opts[:debug])
 
     {erlc_output, erlc_exit_status} =
       debug_measure(
         fn ->
-          System.cmd("erlc", erlc_args)
+          System.cmd("erl", erlc_args)
         end,
-        "erlc cmd",
+        "erl cmd",
         opts[:debug]
       )
 
@@ -302,6 +303,19 @@ defmodule Mix.Tasks.Compile.Idris do
     else
       :error
     end
+  end
+
+  def abstr_to_beam(output_dir, src_files) do
+    """
+    CompileAbstr = fun(File, OutputDir) ->
+      {ok, Forms} = file:consult(File),
+      {ok, ModuleName, BinaryOrCode} = compile:noenv_forms(Forms, []),
+      OutputFile = filename:join(OutputDir, atom_to_list(ModuleName) ++ ".beam"),
+      file:write_file(OutputFile, BinaryOrCode)
+    end,
+    lists:map(fun(File) -> CompileAbstr(File, "#{output_dir}") end, #{inspect(src_files)}),
+    halt(0)
+    """
   end
 
   defp plural_s(count) do
@@ -363,7 +377,7 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp path_to_generated_erl_module(idris_tmp_dir, erl_module) do
-    Path.join(idris_tmp_dir, "#{erl_module}.erl")
+    Path.join(idris_tmp_dir, "#{erl_module}.abstr")
   end
 
   defp read_manifest(file) do
