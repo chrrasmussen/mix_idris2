@@ -7,8 +7,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
   @switches [
     force: :boolean,
-    debug: :boolean,
-    all_warnings: :boolean
+    debug: :boolean
   ]
 
   @idris_extension :idr
