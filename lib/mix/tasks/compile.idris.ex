@@ -7,7 +7,8 @@ defmodule Mix.Tasks.Compile.Idris do
 
   @switches [
     force: :boolean,
-    debug: :boolean
+    debug: :boolean,
+    incremental: :boolean
   ]
 
   @idris_extension :idr
@@ -189,12 +190,11 @@ defmodule Mix.Tasks.Compile.Idris do
          force,
          opts
        ) do
-    # The force flag is enabled on initial compilation => Generate all modules
-    # Otherwise: Generate only modules that have changed
-    extra_cg_opts =
-      if force do
-        []
-      else
+    # If the `:incremental` option is enabled and the `force` flag is not set, only
+    # generate modules that have changed.
+    # Note that the `force` flag is set on initial compilation: Generate all modules.
+    only_changed_arg =
+      if opts[:incremental] && not force do
         namespaces =
           changed_idris_modules
           |> Enum.map(fn {path, _} ->
@@ -207,13 +207,15 @@ defmodule Mix.Tasks.Compile.Idris do
           |> Enum.join(",")
 
         ["--changed #{namespaces}"]
+      else
+        []
       end
 
     idris2_args = [
       "--cg",
       "erlang",
       "--cg-opt",
-      Enum.join(["--format abstr --prefix Elixir.Idris --library"] ++ extra_cg_opts, " "),
+      Enum.join(["--format abstr --prefix Elixir.Idris --library"] ++ only_changed_arg, " "),
       "-o",
       idris_tmp_dir,
       idris_main_file
