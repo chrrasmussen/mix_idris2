@@ -6,6 +6,7 @@ defmodule Mix.Tasks.Compile.Idris do
   @manifest_vsn 1
 
   @switches [
+    executable_path: :string,
     force: :boolean,
     debug: :boolean,
     incremental: :boolean
@@ -211,6 +212,8 @@ defmodule Mix.Tasks.Compile.Idris do
         []
       end
 
+    idris2_executable = opts[:executable_path] || "idris2"
+
     idris2_args = [
       "--cg",
       "erlang",
@@ -221,13 +224,13 @@ defmodule Mix.Tasks.Compile.Idris do
       idris_main_file
     ]
 
-    debug_log("Running cmd: idris2 " <> show_args(idris2_args), opts[:debug])
+    debug_log("Running cmd: #{idris2_executable} #{show_args(idris2_args)}", opts[:debug])
 
     {idris2_output, idris2_exit_status} =
       debug_measure(
         fn ->
           System.cmd(
-            "idris2",
+            idris2_executable,
             idris2_args,
             cd: idris_root_dir
           )
