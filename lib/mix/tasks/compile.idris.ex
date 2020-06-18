@@ -22,12 +22,14 @@ defmodule Mix.Tasks.Compile.Idris do
   defmodule AnnotatedEntrypoint do
     @enforce_keys [
       :idris_root_dir,
-      :idris_main_file,
+      :idris_ipkg_file,
+      :idris_source_dir,
       :files_with_mtime
     ]
     defstruct [
       :idris_root_dir,
-      :idris_main_file,
+      :idris_ipkg_file,
+      :idris_source_dir,
       :files_with_mtime
     ]
   end
@@ -42,7 +44,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
     unless entrypoint_valid?(entrypoint) do
       Mix.raise(
-        ":idris_entrypoint should be a tuple with values {idris_root_dir, idris_main_file}, got: #{
+        ":idris_entrypoint should be a tuple with values {idris_root_dir, idris_ipkg_file, idris_source_dir}, got: #{
           inspect(entrypoint)
         }"
       )
@@ -133,7 +135,8 @@ defmodule Mix.Tasks.Compile.Idris do
           idris_tmp_dir,
           ebin_dir,
           entrypoint.idris_root_dir,
-          entrypoint.idris_main_file,
+          entrypoint.idris_ipkg_file,
+          entrypoint.idris_source_dir,
           force,
           opts
         )
@@ -161,7 +164,8 @@ defmodule Mix.Tasks.Compile.Idris do
          idris_tmp_dir,
          ebin_dir,
          idris_root_dir,
-         idris_main_file,
+         idris_ipkg_file,
+         idris_source_dir,
          force,
          opts
        ) do
@@ -170,7 +174,8 @@ defmodule Mix.Tasks.Compile.Idris do
              changed_idris_modules,
              idris_tmp_dir,
              idris_root_dir,
-             idris_main_file,
+             idris_ipkg_file,
+             idris_source_dir,
              force,
              opts
            ),
@@ -187,7 +192,8 @@ defmodule Mix.Tasks.Compile.Idris do
          changed_idris_modules,
          idris_tmp_dir,
          idris_root_dir,
-         idris_main_file,
+         idris_ipkg_file,
+         idris_source_dir,
          force,
          opts
        ) do
@@ -196,13 +202,15 @@ defmodule Mix.Tasks.Compile.Idris do
     # Note that the `force` flag is set on initial compilation: Generate all modules.
     only_changed_arg =
       if opts[:incremental] && not force do
+        source_abs_dir = Path.expand(Path.join(idris_root_dir, idris_source_dir))
+
         namespaces =
           changed_idris_modules
           |> Enum.map(fn {path, _} ->
             path
-            |> String.replace_prefix(idris_root_dir, "")
-            |> String.replace_suffix(".#{@idris_extension}", "")
-            |> String.trim_leading("/")
+            |> Path.expand()
+            |> Path.relative_to(source_abs_dir)
+            |> Path.rootname(".#{@idris_extension}")
             |> String.replace("/", ".")
           end)
           |> Enum.join(",")
@@ -219,9 +227,10 @@ defmodule Mix.Tasks.Compile.Idris do
       "erlang",
       "--cg-opt",
       Enum.join(["--format abstr --prefix Elixir.Idris --library"] ++ only_changed_arg, " "),
-      "-o",
+      "--output-dir",
       idris_tmp_dir,
-      idris_main_file
+      "--build",
+      idris_ipkg_file
     ]
 
     debug_log("Running cmd: #{idris2_executable} #{show_args(idris2_args)}", opts[:debug])
@@ -323,8 +332,9 @@ defmodule Mix.Tasks.Compile.Idris do
     :ok
   end
 
-  def entrypoint_valid?({idris_root_dir, idris_main_file}) do
-    String.valid?(idris_root_dir) && String.valid?(idris_main_file)
+  def entrypoint_valid?({idris_root_dir, idris_ipkg_file, idris_source_dir}) do
+    String.valid?(idris_root_dir) && String.valid?(idris_ipkg_file) &&
+      String.valid?(idris_source_dir)
   end
 
   def entrypoint_valid?(_), do: false
@@ -335,15 +345,16 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp annotate_entrypoint(
-         {idris_root_dir, idris_main_file},
+         {idris_root_dir, idris_ipkg_file, idris_source_dir},
          exts
        ) do
-    files = Mix.Utils.extract_files([idris_root_dir], exts)
+    files = Mix.Utils.extract_files([Path.join(idris_root_dir, idris_source_dir)], exts)
     files_with_mtime = source_files_with_mtime(files)
 
     %AnnotatedEntrypoint{
       idris_root_dir: idris_root_dir,
-      idris_main_file: idris_main_file,
+      idris_ipkg_file: idris_ipkg_file,
+      idris_source_dir: idris_source_dir,
       files_with_mtime: files_with_mtime
     }
   end
