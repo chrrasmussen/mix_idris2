@@ -226,7 +226,7 @@ defmodule Mix.Tasks.Compile.Idris do
       "--cg",
       "erlang",
       "--cg-opt",
-      Enum.join(["--format abstr --prefix Elixir.Idris --library"] ++ only_changed_arg, " "),
+      Enum.join(["--format abstr --prefix Elixir.Idris"] ++ only_changed_arg, " "),
       "--output-dir",
       idris_tmp_dir,
       "--build",
