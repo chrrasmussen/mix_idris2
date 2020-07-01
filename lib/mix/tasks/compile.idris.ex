@@ -21,13 +21,11 @@ defmodule Mix.Tasks.Compile.Idris do
 
   defmodule AnnotatedEntrypoint do
     @enforce_keys [
-      :idris_root_dir,
       :idris_ipkg_file,
       :idris_source_dir,
       :files_with_mtime
     ]
     defstruct [
-      :idris_root_dir,
       :idris_ipkg_file,
       :idris_source_dir,
       :files_with_mtime
@@ -44,7 +42,7 @@ defmodule Mix.Tasks.Compile.Idris do
 
     unless entrypoint_valid?(entrypoint) do
       Mix.raise(
-        ":idris_entrypoint should be a tuple with values {idris_root_dir, idris_ipkg_file, idris_source_dir}, got: #{
+        ":idris_entrypoint should be a tuple with values {idris_ipkg_file, idris_source_dir}, got: #{
           inspect(entrypoint)
         }"
       )
@@ -134,7 +132,6 @@ defmodule Mix.Tasks.Compile.Idris do
           manifest.compiled_erl_modules,
           idris_tmp_dir,
           ebin_dir,
-          entrypoint.idris_root_dir,
           entrypoint.idris_ipkg_file,
           entrypoint.idris_source_dir,
           force,
@@ -163,7 +160,6 @@ defmodule Mix.Tasks.Compile.Idris do
          already_compiled_erl_modules,
          idris_tmp_dir,
          ebin_dir,
-         idris_root_dir,
          idris_ipkg_file,
          idris_source_dir,
          force,
@@ -173,7 +169,6 @@ defmodule Mix.Tasks.Compile.Idris do
            generate_idris_modules(
              changed_idris_modules,
              idris_tmp_dir,
-             idris_root_dir,
              idris_ipkg_file,
              idris_source_dir,
              force,
@@ -191,7 +186,6 @@ defmodule Mix.Tasks.Compile.Idris do
   defp generate_idris_modules(
          changed_idris_modules,
          idris_tmp_dir,
-         idris_root_dir,
          idris_ipkg_file,
          idris_source_dir,
          force,
@@ -202,7 +196,7 @@ defmodule Mix.Tasks.Compile.Idris do
     # Note that the `force` flag is set on initial compilation: Generate all modules.
     only_changed_arg =
       if opts[:incremental] && not force do
-        source_abs_dir = Path.expand(Path.join(idris_root_dir, idris_source_dir))
+        source_abs_dir = Path.expand(Path.join(idris_root_dir(idris_ipkg_file), idris_source_dir))
 
         namespaces =
           changed_idris_modules
@@ -241,7 +235,7 @@ defmodule Mix.Tasks.Compile.Idris do
           System.cmd(
             idris2_executable,
             idris2_args,
-            cd: idris_root_dir
+            cd: idris_root_dir(idris_ipkg_file)
           )
         end,
         "idris2 cmd",
@@ -332,9 +326,8 @@ defmodule Mix.Tasks.Compile.Idris do
     :ok
   end
 
-  def entrypoint_valid?({idris_root_dir, idris_ipkg_file, idris_source_dir}) do
-    String.valid?(idris_root_dir) && String.valid?(idris_ipkg_file) &&
-      String.valid?(idris_source_dir)
+  def entrypoint_valid?({idris_ipkg_file, idris_source_dir}) do
+    String.valid?(idris_ipkg_file) && String.valid?(idris_source_dir)
   end
 
   def entrypoint_valid?(_), do: false
@@ -345,14 +338,13 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp annotate_entrypoint(
-         {idris_root_dir, idris_ipkg_file, idris_source_dir},
+         {idris_ipkg_file, idris_source_dir},
          exts
        ) do
-    files = Mix.Utils.extract_files([Path.join(idris_root_dir, idris_source_dir)], exts)
+    files = Mix.Utils.extract_files([Path.join(idris_root_dir(idris_ipkg_file), idris_source_dir)], exts)
     files_with_mtime = source_files_with_mtime(files)
 
     %AnnotatedEntrypoint{
-      idris_root_dir: idris_root_dir,
       idris_ipkg_file: idris_ipkg_file,
       idris_source_dir: idris_source_dir,
       files_with_mtime: files_with_mtime
@@ -376,6 +368,10 @@ defmodule Mix.Tasks.Compile.Idris do
 
   defp path_to_generated_erl_module(idris_tmp_dir, erl_module) do
     Path.join(idris_tmp_dir, "#{erl_module}.abstr")
+  end
+
+  defp idris_root_dir(idris_ipkg_file) do
+    Path.dirname(idris_ipkg_file)
   end
 
   defp read_manifest(file) do
