@@ -341,7 +341,12 @@ defmodule Mix.Tasks.Compile.Idris do
          {idris_ipkg_file, idris_source_dir},
          exts
        ) do
-    files = Mix.Utils.extract_files([Path.join(idris_root_dir(idris_ipkg_file), idris_source_dir)], exts)
+    files =
+      Mix.Utils.extract_files(
+        [Path.join(idris_root_dir(idris_ipkg_file), idris_source_dir)],
+        exts
+      )
+
     files_with_mtime = source_files_with_mtime(files)
 
     %AnnotatedEntrypoint{
