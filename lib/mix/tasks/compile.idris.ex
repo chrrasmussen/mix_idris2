@@ -14,6 +14,8 @@ defmodule Mix.Tasks.Compile.Idris do
 
   @idris_extension :idr
 
+  @ipkg_sourcedir_field ~r/^\s*sourcedir\s*=\s*"(.+)"\s*$/m
+
   defmodule Manifest do
     defstruct idris_modules: %{},
               compiled_erl_modules: %{}
@@ -38,17 +40,20 @@ defmodule Mix.Tasks.Compile.Idris do
 
     project = Mix.Project.config()
 
-    entrypoint = project[:idris_entrypoint]
+    idris_ipkg_file = project[:idris_ipkg]
 
-    unless entrypoint_valid?(entrypoint) do
+    unless entrypoint_valid?(idris_ipkg_file) do
       Mix.raise(
-        ":idris_entrypoint should be a tuple with values {idris_ipkg_file, idris_source_dir}, got: #{
-          inspect(entrypoint)
+        ":idris_ipkg should point to an Idris package file (.ipkg), got: #{
+          inspect(idris_ipkg_file)
         }"
       )
     end
 
-    annotated_entrypoint = annotate_entrypoint(entrypoint, [@idris_extension])
+    idris_source_dir = get_ipkg_source_dir(idris_ipkg_file)
+
+    annotated_entrypoint =
+      annotate_entrypoint(idris_ipkg_file, idris_source_dir, [@idris_extension])
 
     idris_tmp_dir = Mix.Project.app_path() |> Path.join("idris")
     ebin_dir = Mix.Project.compile_path()
@@ -326,11 +331,9 @@ defmodule Mix.Tasks.Compile.Idris do
     :ok
   end
 
-  def entrypoint_valid?({idris_ipkg_file, idris_source_dir}) do
-    String.valid?(idris_ipkg_file) && String.valid?(idris_source_dir)
+  def entrypoint_valid?(idris_ipkg_file) do
+    String.ends_with?(idris_ipkg_file, ".ipkg")
   end
-
-  def entrypoint_valid?(_), do: false
 
   defp delete_erl_module(ebin_dir, erl_module) do
     beam_path = Path.join(ebin_dir, "#{erl_module}.beam")
@@ -338,7 +341,8 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp annotate_entrypoint(
-         {idris_ipkg_file, idris_source_dir},
+         idris_ipkg_file,
+         idris_source_dir,
          exts
        ) do
     files =
@@ -377,6 +381,20 @@ defmodule Mix.Tasks.Compile.Idris do
 
   defp idris_root_dir(idris_ipkg_file) do
     Path.dirname(idris_ipkg_file)
+  end
+
+  defp get_ipkg_source_dir(idris_ipkg_file) do
+    File.read!(idris_ipkg_file)
+    |> parse_ipkg_source_dir()
+  end
+
+  defp parse_ipkg_source_dir(contents) do
+    # If sourcedir is not found, default to current directory
+    if matched = Regex.run(@ipkg_sourcedir_field, contents) do
+      Enum.at(matched, 1)
+    else
+      "."
+    end
   end
 
   defp read_manifest(file) do
