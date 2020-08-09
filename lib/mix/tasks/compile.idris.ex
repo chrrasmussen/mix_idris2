@@ -12,7 +12,8 @@ defmodule Mix.Tasks.Compile.Idris do
     force: :boolean
   ]
 
-  @idris_extension :idr
+  @idris_extension "idr"
+  @erlang_source_extension "erl"
 
   @ipkg_sourcedir_field ~r/^\s*sourcedir\s*=\s*"(.+)"\s*$/m
 
@@ -219,7 +220,7 @@ defmodule Mix.Tasks.Compile.Idris do
         []
       end
 
-    all_directives = ["format abstr", "prefix Elixir.Idris"] ++ only_changed_directive
+    all_directives = ["format erl", "prefix Elixir.Idris"] ++ only_changed_directive
 
     directive_args =
       all_directives
@@ -273,8 +274,10 @@ defmodule Mix.Tasks.Compile.Idris do
        ) do
     all_generated_erl_modules =
       File.ls!(idris_tmp_dir)
-      |> Enum.filter(fn filename -> Path.extname(filename) == ".abstr" end)
-      |> Enum.map(fn filename -> Path.basename(filename, ".abstr") |> String.to_atom() end)
+      |> Enum.filter(fn filename -> Path.extname(filename) == ".#{@erlang_source_extension}" end)
+      |> Enum.map(fn filename ->
+        Path.basename(filename, ".#{@erlang_source_extension}") |> String.to_atom()
+      end)
 
     generated_erl_modules_hashes =
       generated_erl_modules_with_hash(idris_tmp_dir, all_generated_erl_modules)
@@ -291,10 +294,20 @@ defmodule Mix.Tasks.Compile.Idris do
       |> Enum.map(fn {filename, _} -> path_to_generated_erl_module(idris_tmp_dir, filename) end)
 
     generated_files_count = length(all_generated_erl_modules)
-    IO.puts("Generated #{generated_files_count} file#{plural_s(generated_files_count)} (.abstr)")
+
+    IO.puts(
+      "Generated #{generated_files_count} file#{plural_s(generated_files_count)} (.#{
+        @erlang_source_extension
+      })"
+    )
 
     changed_files_count = length(erl_file_paths)
-    IO.puts("Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.abstr)")
+
+    IO.puts(
+      "Compiling #{changed_files_count} file#{plural_s(changed_files_count)} (.#{
+        @erlang_source_extension
+      })"
+    )
 
     debug_log("Compiling files: #{inspect(erl_file_paths)}", opts[:debug])
 
@@ -302,20 +315,20 @@ defmodule Mix.Tasks.Compile.Idris do
     debug_measure(
       fn ->
         erl_file_paths
-        |> Enum.map(&abstr_to_beam(&1, ebin_dir))
+        |> Enum.map(&erl_to_beam(&1, ebin_dir))
       end,
-      ":compile.noenv_forms/2",
+      ":compile.noenv_file/2",
       opts[:debug]
     )
 
     {:ok, generated_erl_modules_hashes}
   end
 
-  defp abstr_to_beam(erl_file_path, output_dir) do
-    {:ok, forms} = :file.consult(erl_file_path)
-    {:ok, module_name, binary_or_code} = :compile.noenv_forms(forms, [])
-    beam_path = Path.join(output_dir, "#{module_name}.beam")
-    File.write!(beam_path, binary_or_code)
+  defp erl_to_beam(erl_file_path, output_dir) do
+    {:ok, _module_name} =
+      :compile.noenv_file(:erlang.binary_to_list(erl_file_path), [
+        {:outdir, :erlang.binary_to_list(output_dir)}
+      ])
   end
 
   defp plural_s(count) do
@@ -381,7 +394,7 @@ defmodule Mix.Tasks.Compile.Idris do
   end
 
   defp path_to_generated_erl_module(idris_tmp_dir, erl_module) do
-    Path.join(idris_tmp_dir, "#{erl_module}.abstr")
+    Path.join(idris_tmp_dir, "#{erl_module}.#{@erlang_source_extension}")
   end
 
   defp idris_root_dir(idris_ipkg_file) do
