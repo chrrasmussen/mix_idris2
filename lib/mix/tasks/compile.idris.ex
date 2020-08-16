@@ -200,7 +200,7 @@ defmodule Mix.Tasks.Compile.Idris do
     # If the `:incremental` option is enabled and the `force` flag is not set, only
     # generate modules that have changed.
     # Note that the `force` flag is set on initial compilation: Generate all modules.
-    only_changed_directive =
+    only_changed_namespaces_arg =
       if opts[:incremental] && not force do
         source_abs_dir = Path.expand(Path.join(idris_root_dir(idris_ipkg_file), idris_source_dir))
 
@@ -213,14 +213,14 @@ defmodule Mix.Tasks.Compile.Idris do
             |> Path.rootname(".#{@idris_extension}")
             |> String.replace("/", ".")
           end)
-          |> Enum.join(" ")
+          |> Enum.join(",")
 
-        ["changed #{namespaces}"]
+        ["--changed-namespaces", "#{namespaces}"]
       else
         []
       end
 
-    all_directives = ["format erl", "prefix Elixir.Idris"] ++ only_changed_directive
+    all_directives = ["format erl", "prefix Elixir.Idris"]
 
     directive_args =
       all_directives
@@ -236,7 +236,7 @@ defmodule Mix.Tasks.Compile.Idris do
         idris_tmp_dir,
         "--build",
         idris_ipkg_file
-      ] ++ directive_args
+      ] ++ directive_args ++ only_changed_namespaces_arg
 
     debug_log("Running cmd: #{idris2_executable} #{show_args(idris2_args)}", opts[:debug])
 
