@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Compile.Idris do
     force: :boolean
   ]
 
-  @idris_extension "idr"
+  @idris_extensions ["idr", "lidr"]
   @erlang_source_extension "erl"
 
   @ipkg_sourcedir_field ~r/^\s*sourcedir\s*=\s*"(.+)"\s*$/m
@@ -54,7 +54,7 @@ defmodule Mix.Tasks.Compile.Idris do
     idris_source_dir = get_ipkg_source_dir(idris_ipkg_file)
 
     annotated_entrypoint =
-      annotate_entrypoint(idris_ipkg_file, idris_source_dir, [@idris_extension])
+      annotate_entrypoint(idris_ipkg_file, idris_source_dir, @idris_extensions)
 
     idris_tmp_dir = Mix.Project.app_path() |> Path.join("idris")
     ebin_dir = Mix.Project.compile_path()
@@ -210,7 +210,7 @@ defmodule Mix.Tasks.Compile.Idris do
             path
             |> Path.expand()
             |> Path.relative_to(source_abs_dir)
-            |> Path.rootname(".#{@idris_extension}")
+            |> Path.rootname()
             |> String.replace("/", ".")
           end)
           |> Enum.join(",")
