@@ -230,7 +230,8 @@ defmodule Mix.Tasks.Compile.Idris do
 
     idris2_args =
       [
-        "--cg",
+        "--no-color",
+        "--codegen",
         "erlang",
         "--output-dir",
         idris_tmp_dir,
