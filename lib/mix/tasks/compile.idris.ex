@@ -12,6 +12,7 @@ defmodule Mix.Tasks.Compile.Idris do
     force: :boolean
   ]
 
+  @default_executable_path "idris2erl"
   @idris_extensions ["idr", "lidr"]
   @erlang_source_extension "erl"
 
@@ -226,7 +227,7 @@ defmodule Mix.Tasks.Compile.Idris do
       all_directives
       |> Enum.flat_map(fn directive -> ["--directive", directive] end)
 
-    idris2_executable = opts[:executable_path] || "idris2"
+    idris2_executable = opts[:executable_path] || @default_executable_path
 
     idris2_args =
       [
