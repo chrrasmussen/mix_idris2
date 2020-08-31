@@ -227,12 +227,6 @@ defmodule Mix.Tasks.Compile.Idris do
       all_directives
       |> Enum.flat_map(fn directive -> ["--directive", directive] end)
 
-    idris2_executable = opts[:executable_path] || @default_executable_path
-
-    if :os.find_executable(String.to_charlist(idris2_executable)) == false do
-      raise "Unable to find executable: " <> idris2_executable
-    end
-
     idris2_args =
       [
         "--no-color",
@@ -244,19 +238,38 @@ defmodule Mix.Tasks.Compile.Idris do
         idris_ipkg_file
       ] ++ directive_args ++ only_changed_namespaces_arg
 
-    debug_log("Running cmd: #{idris2_executable} #{show_args(idris2_args)}", opts[:debug])
-
-    {idris2_output, idris2_exit_status} =
-      debug_measure(
-        fn ->
-          System.cmd(
-            idris2_executable,
-            idris2_args,
-            cd: idris_root_dir(idris_ipkg_file)
+    debug_measure(
+      fn ->
+        if opts[:executable_path] == nil && Code.ensure_loaded?(:idris2) do
+          debug_log(
+            "Compiling via idris2 library: :idris2.main(#{inspect(idris2_args)})",
+            opts[:debug]
           )
-        end,
-        "idris2 cmd",
-        opts[:debug]
+
+          apply(:idris2, :run, [idris2_args])
+        else
+          idris2_executable = opts[:executable_path] || @default_executable_path
+
+          if :os.find_executable(String.to_charlist(idris2_executable)) == false do
+            raise "Unable to find executable: " <> idris2_executable
+          end
+
+          debug_log("Running cmd: #{idris2_executable} #{show_args(idris2_args)}", opts[:debug])
+
+          compile_using_executable(idris2_executable, idris2_args, idris_ipkg_file)
+        end
+      end,
+      "Compile Idris modules",
+      opts[:debug]
+    )
+  end
+
+  defp compile_using_executable(idris2_executable, idris2_args, idris_ipkg_file) do
+    {idris2_output, idris2_exit_status} =
+      System.cmd(
+        idris2_executable,
+        idris2_args,
+        cd: idris_root_dir(idris_ipkg_file)
       )
 
     idris2_trimmed_output = String.trim(idris2_output)
