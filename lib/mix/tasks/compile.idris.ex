@@ -229,6 +229,10 @@ defmodule Mix.Tasks.Compile.Idris do
 
     idris2_executable = opts[:executable_path] || @default_executable_path
 
+    if :os.find_executable(String.to_charlist(idris2_executable)) == false do
+      raise "Unable to find executable: " <> idris2_executable
+    end
+
     idris2_args =
       [
         "--no-color",
