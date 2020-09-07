@@ -216,7 +216,7 @@ defmodule Mix.Tasks.Compile.Idris do
           end)
           |> Enum.join(",")
 
-        ["--changed-namespaces", "#{namespaces}"]
+        ["--changed-modules", "#{namespaces}"]
       else
         []
       end
